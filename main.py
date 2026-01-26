@@ -8,6 +8,7 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from config import *
+from groq import Groq
 
 bot = discord.Bot(debug_guilds=[GUILD_ID])
 
@@ -18,6 +19,15 @@ print("Model loaded!")
 thread_pool = ThreadPoolExecutor(max_workers=1)
 model_lock = asyncio.Lock()
 bot_controllers = {}
+
+groq = Groq(api_key=GROQ_API_KEY)
+
+conversation_history = [
+    {
+        "role": "system",
+        "content": SYSTEM_PROMPT
+    }
+]
 
 async def finished_callback(sink, channel: discord.TextChannel, *args):
     """
@@ -132,19 +142,31 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
         member = guild.get_member(user_id)
         if member: username = member.display_name
 
-        async with model_lock:
+        if RUN_LOCALLY:
+            async with model_lock:
+                def run_whisper():
+                    segments, info = model.transcribe(
+                        out_buffer,
+                        beam_size=5, 
+                        language=LANGUAGE.lower(),
+                        vad_filter=True,
+                        vad_parameters=dict(min_silence_duration_ms=500),
+                        initial_prompt=INITIAL_PROMPT if REQUIRE_TRIGGER else None 
+                    )
+                    return "".join([segment.text for segment in segments]).strip()
+        else:
             def run_whisper():
-                segments, info = model.transcribe(
-                    out_buffer,
-                    beam_size=5, 
+                transcription = groq.audio.transcriptions.create(
+                    file=("audio.wav", out_buffer.read()), 
+                    model="whisper-large-v3-turbo",
+                    prompt=INITIAL_PROMPT if REQUIRE_TRIGGER else None,
+                    temperature=0.0,
                     language=LANGUAGE.lower(),
-                    vad_filter=True,
-                    vad_parameters=dict(min_silence_duration_ms=500),
-                    initial_prompt=INITIAL_PROMPT if REQUIRE_TRIGGER else None 
+                    response_format="json"
                 )
-                return "".join([segment.text for segment in segments]).strip()
+                return transcription.text.strip()
             
-            text = await bot.loop.run_in_executor(thread_pool, run_whisper)
+        text = await bot.loop.run_in_executor(thread_pool, run_whisper)
 
         if text:
             clean_text = text.lower().replace(",", "").replace(".", "").replace("?", "").strip()
@@ -165,7 +187,26 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
                     embed = discord.Embed(description=text, color=discord.Color.green())
                     embed.set_author(name=username, icon_url=member.avatar.url if member else None)
                     await channel.send(embed=embed)
-                    print(f"{username}: {text}")
+                    conversation_history.append({"role": "user", "content": text})
+                    def ask_groq():
+                        chat_completion = groq.chat.completions.create(
+                            messages=conversation_history,
+                            model="llama-3.3-70b-versatile",
+                            temperature=0.7,
+                            max_completion_tokens=300,
+                            stream=False
+                        )
+                        return chat_completion.choices[0].message.content
+                    
+                    response_text = await bot.loop.run_in_executor(thread_pool, ask_groq)
+                    conversation_history.append({"role": "assistant", "content": response_text})
+
+                    if len(conversation_history) > 10: 
+                        del conversation_history[1:3]
+
+                    embed = discord.Embed(description=response_text, color=discord.Color.red())
+                    embed.set_author(name=username, icon_url=member.avatar.url if member else None)
+                    await channel.send(embed=embed)
                 else:
                     print(f"No permission to send messages in {channel.name}")
                 
