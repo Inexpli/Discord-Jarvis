@@ -9,18 +9,19 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from config import *
 from groq import Groq
+from tavily import TavilyClient
+import json
+
+print("Starting bot...")
 
 bot = discord.Bot(debug_guilds=[GUILD_ID])
-
-print("Loading Whisper model...")
-model = WhisperModel("large-v3", device="cuda", compute_type="float16")
-print("Model loaded!")
 
 thread_pool = ThreadPoolExecutor(max_workers=1)
 model_lock = asyncio.Lock()
 bot_controllers = {}
 
 groq = Groq(api_key=GROQ_API_KEY)
+tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 
 conversation_history = [
     {
@@ -28,6 +29,27 @@ conversation_history = [
         "content": SYSTEM_PROMPT
     }
 ]
+
+tools_schema = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Get current information from the internet (weather, news, facts). Use this when the user asks about something that requires up-to-date knowledge.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to send to the search engine (e.g. 'current weather in Warsaw', 'who won the match yesterday')."
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
+
 
 async def finished_callback(sink, channel: discord.TextChannel, *args):
     """
@@ -143,6 +165,7 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
         if member: username = member.display_name
 
         if RUN_LOCALLY:
+            model = WhisperModel("large-v3", device="cuda", compute_type="float16")
             async with model_lock:
                 def run_whisper():
                     segments, info = model.transcribe(
@@ -189,24 +212,66 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
                     await channel.send(embed=embed)
                     conversation_history.append({"role": "user", "content": text})
                     def ask_groq():
-                        chat_completion = groq.chat.completions.create(
+                        response = groq.chat.completions.create(
                             messages=conversation_history,
-                            model="llama-3.3-70b-versatile",
+                            model="openai/gpt-oss-120b",
                             temperature=0.7,
                             max_completion_tokens=300,
-                            stream=False
+                            stream=False,
+                            tools=tools_schema,
                         )
-                        return chat_completion.choices[0].message.content
+                        response_message = response.choices[0].message
+                        tool_calls = response_message.tool_calls
+
+                        if tool_calls:
+                            conversation_history.append(response_message)
+
+                            for tool_call in tool_calls:
+                                if tool_call.function.name == "web_search":
+                                    function_args = json.loads(tool_call.function.arguments)
+                                    query = function_args.get("query")
+                                    print(f"Searching: {query}")
+                                    
+                                    search_result = json.dumps(
+                                        tavily_client.search(query, search_depth="basic", max_tokens=500),
+                                        ensure_ascii=False
+                                    )
+                                    
+                                    conversation_history.append({
+                                        "tool_call_id": tool_call.id,
+                                        "role": "tool",
+                                        "name": "web_search",
+                                        "content": search_result,
+                                    })
+
+                            final_response = groq.chat.completions.create(
+                                messages=conversation_history,
+                                model="openai/gpt-oss-120b",
+                                tools=tools_schema,
+                                stream=False,
+                                max_completion_tokens=300,
+                            )
+                            return final_response.choices[0].message.content
+                        else:
+                            return response_message.content
                     
-                    response_text = await bot.loop.run_in_executor(thread_pool, ask_groq)
-                    conversation_history.append({"role": "assistant", "content": response_text})
+                    try:
+                        response_text = await bot.loop.run_in_executor(thread_pool, ask_groq)
+                        
+                        conversation_history.append({"role": "assistant", "content": response_text})
 
-                    if len(conversation_history) > 10: 
-                        del conversation_history[1:3]
+                        if len(conversation_history) > 15: 
+                            del conversation_history[1:4]
 
-                    embed = discord.Embed(description=response_text, color=discord.Color.red())
-                    embed.set_author(name=username, icon_url=member.avatar.url if member else None)
-                    await channel.send(embed=embed)
+                        embed = discord.Embed(description=response_text, color=discord.Color.red())
+                        embed.set_author(name=bot.user.name, icon_url=bot.user.avatar.url if member else None)
+                        await channel.send(embed=embed)
+                        
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        import traceback
+                        traceback.print_exc()
+
                 else:
                     print(f"No permission to send messages in {channel.name}")
                 
