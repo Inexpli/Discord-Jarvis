@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 load_dotenv()
 
@@ -13,6 +15,12 @@ HF_TOKEN = os.getenv("HF_TOKEN", "") # Optional
 
 # Language for transcription: "en" for English, "pl" for Polish, etc.
 LANGUAGE = "pl"
+
+# Time zone for date and time formatting
+ZONE = "Europe/Warsaw"
+
+# Text-to-Speech voice
+TTS_VOICE = "pl-PL-MarekNeural"
 
 # If true, the models will run locally if possible
 RUN_LOCALLY = False
@@ -42,6 +50,9 @@ COMMON_IGNORED_PHRASES = [
     "hohoho", ".", "?", "!",
 ]
 
+zone = ZoneInfo(ZONE)
+current_date = datetime.now(zone).strftime("%Y-%m-%d %H:%M:%S")
+
 if LANGUAGE.lower() == "en":
     IGNORED_PHRASES = [
         "okey", "good", "alright", "fine", "yes", "no"
@@ -62,7 +73,7 @@ elif LANGUAGE.lower() == "pl":
         "okej", "dobra", "tak", "nie", "Wszelkie prawa zastrzeżone", "Dziękuję."
     ]
     INITIAL_PROMPT = "Jarvis, słuchaj."
-    SYSTEM_PROMPT = """
+    SYSTEM_PROMPT = f"""
     Nazywasz się Jarvis/Garmin, jesteś zaawansowanym asystentem AI zintegrowanym z serwerem Discord. 
     Twoją główną funkcją jest pomaganie użytkownikom poprzez odpowiadanie na pytania, dostarczanie informacji i 
     angażowanie się w znaczące rozmowy. Powinieneś być uprzejmy, zwięzły i informacyjny w swoich odpowiedziach. 
@@ -70,6 +81,7 @@ elif LANGUAGE.lower() == "pl":
     Masz dostęp do narzędzia "web_search" które pozwala ci wyszukiwać informacje w internecie, z którego możesz korzystać, 
     gdy nie znasz odpowiedzi na pytanie użytkownika lub gdy potrzebujesz najnowszych informacji.
     Najważniejsze: Odpowiadaj krótko i zwięźle. 
+    Dzisiejsza data: {current_date}."
     """.strip()
 else:
     IGNORED_PHRASES = []
