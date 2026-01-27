@@ -145,13 +145,15 @@ async def check_silence_task():
 async def speak_response(vc, text):
     """
     Converts text to speech and plays it in the voice channel.
+    
     Args:
         vc: The voice client.
         text: The text to convert to speech.
     """
 
     global IS_SPEAKING
-    if not vc or not vc.is_connected(): return
+    if not vc or not vc.is_connected(): 
+        return
     
     IS_SPEAKING = True
     
@@ -166,7 +168,8 @@ async def speak_response(vc, text):
 
     def after_tts(error):
         global IS_SPEAKING
-        if error: print(f"TTS Error: {error}")
+        if error: 
+            print(f"TTS Error: {error}")
         
         IS_SPEAKING = False
         play_keep_alive(vc)
