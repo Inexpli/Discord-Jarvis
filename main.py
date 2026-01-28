@@ -12,12 +12,14 @@ from groq import Groq, BadRequestError
 from tavily import TavilyClient
 import edge_tts
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 print("Starting bot...")
 
 bot = discord.Bot(debug_guilds=[GUILD_ID])
 
-thread_pool = ThreadPoolExecutor(max_workers=1)
+thread_pool = ThreadPoolExecutor(max_workers=3)
 model_lock = asyncio.Lock()
 bot_controllers = {}
 
@@ -25,7 +27,6 @@ groq = Groq(api_key=GROQ_API_KEY)
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 
 IS_SPEAKING = False # Don't change this - used to TTS state management
-print(SYSTEM_PROMPT)
 
 conversation_history = [
     {
@@ -51,6 +52,16 @@ tools_schema = [
                 "required": ["query"],
             },
         },
+        "type": "function",
+        "function": {
+            "name": "current_time",
+            "description": "Fetch the current date and time in the user's local time zone.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        }
     }
 ]
 
@@ -82,8 +93,11 @@ class AutoCutSink(discord.sinks.PCMSink):
             return
 
         try:
-            if not data: return
-            if user is None: return
+            if not data: 
+                return
+            
+            if user is None: 
+                return
 
             user_id = user.id if hasattr(user, 'id') else int(user)
 
@@ -208,7 +222,7 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
         if member: username = member.display_name
 
         if RUN_LOCALLY:
-            model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+            model = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
             async with model_lock:
                 def run_whisper():
                     segments, info = model.transcribe(
@@ -245,11 +259,12 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
                     print(f"Ignoring: '{text}'")
                     return 
             
-            if channel and LOGGING:
+            if channel:
                 if channel.permissions_for(guild.me).send_messages:
-                    embed = discord.Embed(description=f"{text}", color=discord.Color.green())
-                    embed.set_author(name=username, icon_url=member.avatar.url if member else None)
-                    await channel.send(embed=embed)
+                    if LOGGING:
+                        embed = discord.Embed(description=f"{text}", color=discord.Color.green())
+                        embed.set_author(name=username, icon_url=member.avatar.url if member else None)
+                        await channel.send(embed=embed)
                     
                     conversation_history.append({"role": "user", "content": text})
 
@@ -295,12 +310,38 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
                                         "name": "web_search",
                                         "content": search_result,
                                     })
+                                if tool_call.function.name == "current_time":
+                                    try:
+                                        print(f"Fetching current server time")
+                                        current_time_str = datetime.now(ZoneInfo(ZONE)).strftime("%Y-%m-%d %H:%M:%S")
+                                        raw_result = {
+                                            "status": "success",
+                                            "current_time": current_time_str,
+                                            "time_zone": ZONE
+                                        }
+                                        search_result = json.dumps(raw_result, ensure_ascii=False)
+                                    except Exception as e:
+                                        search_result = json.dumps({"error": str(e)})
+                                    
+                                    conversation_history.append({
+                                        "tool_call_id": tool_call.id, 
+                                        "role": "tool",
+                                        "name": "current_time",
+                                        "content": search_result,
+                                    })
                             
-                            final_response = groq.chat.completions.create(
-                                messages=conversation_history,
-                                model="llama-3.3-70b-versatile"
-                            )
-                            return final_response.choices[0].message.content or ""
+                            try:
+                                final_response = groq.chat.completions.create(
+                                    messages=conversation_history,
+                                    model="llama-3.3-70b-versatile",
+                                    temperature=0.7,
+                                    tools=tools_schema,
+                                    tool_choice="auto"
+                                )
+                                return final_response.choices[0].message.content or ""
+                            except BadRequestError as e:
+                                print(f"BadRequestError Step 2: {e}")
+                                return "Error generating final response."
                         else:
                             return response_message.content or ""
                     
@@ -320,9 +361,10 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
                             clean_tts = response_text.replace("**", "").replace("*", "")
                             await speak_response(vc, clean_tts)
 
-                        embed = discord.Embed(description=response_text, color=discord.Color.red())
-                        embed.set_author(name=bot.user.name, icon_url=bot.user.avatar.url if member else None)
-                        await channel.send(embed=embed)
+                        if LOGGING:
+                            embed = discord.Embed(description=response_text, color=discord.Color.red())
+                            embed.set_author(name=bot.user.name, icon_url=bot.user.avatar.url if member else None)
+                            await channel.send(embed=embed)
                         
                     except Exception as e:
                         print(f"LLM Error: {e}")
@@ -426,9 +468,17 @@ async def on_voice_state_update(member, before, after):
         after: The new voice state.
     """
     vc = member.guild.voice_client
-    if not vc: return
+    if not vc: 
+        return
+    
     controller_id = bot_controllers.get(member.guild.id)
-    if member.id != controller_id: return
+
+    if member.id != controller_id: 
+        return
+
+    if len(vc.channel.members) == 1:
+        await vc.disconnect()
+        return
 
     if before.channel and before.channel.id == vc.channel.id:
         if after.channel:
