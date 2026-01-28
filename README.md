@@ -99,4 +99,4 @@ This project is licensed under the MIT License.
 ## ⚠️ Limitations
 **Single Instance:** The bot currently utilizes global variables for conversation state. It is designed to work on one server/channel at a time. Running it on multiple servers simultaneously may cause conversation history overlap.
 
-**Local Performance:** If RUN_LOCALLY = True, a decent GPU (NVIDIA) is required for Faster-Whisper to run smoothly.
+**Local Performance:** `If RUN_LOCALLY = True`, a decent GPU (NVIDIA) is required for Faster-Whisper to run smoothly.
