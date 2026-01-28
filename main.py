@@ -51,7 +51,9 @@ tools_schema = [
                 },
                 "required": ["query"],
             },
-        },
+        }
+    },
+    {
         "type": "function",
         "function": {
             "name": "current_time",
@@ -64,6 +66,7 @@ tools_schema = [
         }
     }
 ]
+
 
 
 async def finished_callback(sink, channel: discord.TextChannel, *args):
@@ -336,7 +339,7 @@ async def process_transcription(guild, user_id, raw_pcm, channel):
                                     model="llama-3.3-70b-versatile",
                                     temperature=0.7,
                                     tools=tools_schema,
-                                    tool_choice="auto"
+                                    tool_choice="none"
                                 )
                                 return final_response.choices[0].message.content or ""
                             except BadRequestError as e:
