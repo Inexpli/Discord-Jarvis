@@ -42,7 +42,7 @@ TRIGGERS = ["jarvis", "dlarwis", "jarewis", "elvis", "dziarowijs", "dziadowiz", 
 # Filtered phrases
 COMMON_IGNORED_PHRASES = [
     "yhm", "mhm", "ahem", "khm", "khm khm", "ach", "eh",
-    "mm", "mmh", "mmm", "hm", "hmm", "hmmm", "hmmmm", "hmmmmm" "uh", "uhm", 
+    "mm", "mmh", "mmm", "hm", "hmm", "hmmm", "hmmmm", "hmmmmm", "uh", "uhm", 
     "uhmm", "uhmmm", "ehm", "ehmm", "ehmmm", "aha", "oho", 
     "ojej", "och", "oj", "hahaha", "hehehe", "hihihi", 
     "hohoho", ".", "?", "!",
