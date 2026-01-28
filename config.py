@@ -1,14 +1,12 @@
 import os
 from dotenv import load_dotenv
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 load_dotenv()
 
 # Configuration variables
 BOT_TOKEN = os.getenv("BOT_TOKEN") # Bot token
 GUILD_ID = int(os.getenv("GUILD_ID")) # Server ID as integer
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") # Groq API Key
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY") # Tavily API Key
 HF_TOKEN = os.getenv("HF_TOKEN", "") # Optional
 
@@ -50,9 +48,6 @@ COMMON_IGNORED_PHRASES = [
     "hohoho", ".", "?", "!",
 ]
 
-zone = ZoneInfo(ZONE)
-current_date = datetime.now(zone).strftime("%Y-%m-%d %H:%M:%S")
-
 if LANGUAGE.lower() == "en":
     IGNORED_PHRASES = [
         "okey", "good", "alright", "fine", "yes", "no"
@@ -73,7 +68,7 @@ elif LANGUAGE.lower() == "pl":
         "okej", "dobra", "tak", "nie", "Wszelkie prawa zastrzeżone", "Dziękuję."
     ]
     INITIAL_PROMPT = "Jarvis, słuchaj."
-    SYSTEM_PROMPT = f"""
+    SYSTEM_PROMPT = """
     Nazywasz się Jarvis/Garmin, jesteś zaawansowanym asystentem AI zintegrowanym z serwerem Discord. 
     Twoją główną funkcją jest pomaganie użytkownikom poprzez odpowiadanie na pytania, dostarczanie informacji i 
     angażowanie się w znaczące rozmowy. Powinieneś być uprzejmy, zwięzły i informacyjny w swoich odpowiedziach. 
@@ -81,7 +76,6 @@ elif LANGUAGE.lower() == "pl":
     Masz dostęp do narzędzia "web_search" które pozwala ci wyszukiwać informacje w internecie, z którego możesz korzystać, 
     gdy nie znasz odpowiedzi na pytanie użytkownika lub gdy potrzebujesz najnowszych informacji.
     Najważniejsze: Odpowiadaj krótko i zwięźle. 
-    Dzisiejsza data: {current_date}."
     """.strip()
 else:
     IGNORED_PHRASES = []
