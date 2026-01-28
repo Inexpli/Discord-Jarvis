@@ -6,13 +6,19 @@ load_dotenv()
 # Configuration variables
 BOT_TOKEN = os.getenv("BOT_TOKEN") # Bot token
 GUILD_ID = int(os.getenv("GUILD_ID")) # Server ID as integer
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") # Groq API Key
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY") # Tavily API Key
 HF_TOKEN = os.getenv("HF_TOKEN", "") # Optional
 
 
 # Language for transcription: "en" for English, "pl" for Polish, etc.
 LANGUAGE = "pl"
+
+# Time zone for date and time formatting
+ZONE = "Europe/Warsaw"
+
+# Text-to-Speech voice
+TTS_VOICE = "pl-PL-MarekNeural"
 
 # If true, the models will run locally if possible
 RUN_LOCALLY = False
